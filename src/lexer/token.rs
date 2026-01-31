@@ -106,7 +106,7 @@ impl<'a> Lexer<'a> {
     fn read_identifier(&mut self) -> String {
         let start = self.pos;
         while let Some(c) = self.current_char {
-            if c.is_alphanumeric() || c == '_' || c == '-' || c == '/' || c == '.' {
+            if c.is_alphanumeric() || c == '_' || c == '.' {
                 self.advance();
             } else {
                 break;
@@ -210,7 +210,7 @@ impl<'a> Iterator for Lexer<'a> {
                     Some(content),
                 )
             }
-            Some(c) if c.is_alphabetic() || c == '_' || c == '-' || c == '/' => {
+            Some(c) if c.is_alphabetic() || c == '_' => {
                 let value = self.read_identifier();
                 match value.as_str() {
                     "true" => Token::new(TokenType::Boolean, start, self.pos, Some(value)),
