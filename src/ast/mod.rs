@@ -1,3 +1,3 @@
 pub mod types;
 
-pub use types::{Expression, Literal, Program, Statement};
+pub use types::{BinaryOperator, Expression, Literal, Program, Statement, UnaryOperator};

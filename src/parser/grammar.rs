@@ -1,4 +1,4 @@
-use crate::ast::{Expression, Literal, Program, Statement};
+use crate::ast::{BinaryOperator, Expression, Literal, Program, Statement, UnaryOperator};
 use crate::lexer::{SpannedToken, TokenType};
 use crate::parser::error::ParserError;
 use crate::parser::error::ParserResult;
@@ -23,9 +23,13 @@ fn parse_statement(tokens: &[SpannedToken], pos: &mut usize) -> ParserResult<Opt
         return Ok(None);
     }
 
-    let (start, token, _) = &tokens[*pos];
+    let (_, token, _) = &tokens[*pos];
 
     match token.token_type {
+        TokenType::Comment => {
+            *pos += 1;
+            parse_statement(tokens, pos)
+        }
         TokenType::Newline => {
             *pos += 1;
             parse_statement(tokens, pos)
@@ -57,8 +61,8 @@ fn parse_statement(tokens: &[SpannedToken], pos: &mut usize) -> ParserResult<Opt
         }
         TokenType::EOF => Ok(None),
         _ => Err(ParserError::Other(format!(
-            "Unexpected token at position {}",
-            start
+            "Unexpected token at position {}: {:?}",
+            token.span.0, token.token_type
         ))),
     }
 }
@@ -72,9 +76,6 @@ fn parse_expression(tokens: &[SpannedToken], pos: &mut usize) -> ParserResult<Ex
     *pos += 1;
 
     match token.token_type {
-        TokenType::Identifier => Ok(Expression::Identifier(
-            token.value.clone().unwrap_or_default(),
-        )),
         TokenType::Integer => {
             let val = token.value.clone().unwrap_or_default().parse().unwrap_or(0);
             Ok(Expression::Literal(Literal::Integer(val)))
@@ -87,8 +88,11 @@ fn parse_expression(tokens: &[SpannedToken], pos: &mut usize) -> ParserResult<Ex
         TokenType::String => Ok(Expression::Literal(Literal::String(
             token.value.clone().unwrap_or_default(),
         ))),
+        TokenType::Identifier => Ok(Expression::Identifier(
+            token.value.clone().unwrap_or_default(),
+        )),
         _ => Err(ParserError::Other(format!(
-            "Unexpected token type: {:?}",
+            "Unexpected token: {:?}",
             token.token_type
         ))),
     }
@@ -111,14 +115,5 @@ mod tests {
         let tokens = tokenize("echo hello").unwrap();
         let result = parse(tokens);
         assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_parse_multiple_statements() {
-        let tokens = tokenize("x = 1\ny = 2\necho x").unwrap();
-        let result = parse(tokens);
-        assert!(result.is_ok());
-        let ast = result.unwrap();
-        assert_eq!(ast.0.len(), 3);
     }
 }

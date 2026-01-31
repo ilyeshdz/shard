@@ -25,6 +25,9 @@ fn generate_statement(output: &mut String, statement: &Statement) -> CodegenResu
         Statement::Command { name, args } => {
             generate_command(output, name, args)?;
         }
+        _ => {
+            output.push_str("# TODO: Implement statement\n");
+        }
     }
     Ok(())
 }
@@ -33,26 +36,108 @@ fn generate_expression(expr: &Expression) -> CodegenResult<String> {
     match expr {
         Expression::Literal(literal) => match literal {
             Literal::Integer(n) => Ok(n.to_string()),
+            Literal::Float(f) => Ok(f.to_string()),
             Literal::Boolean(true) => Ok("true".to_string()),
             Literal::Boolean(false) => Ok("false".to_string()),
             Literal::Null => Ok("null".to_string()),
             Literal::String(s) => Ok(format!("'{}'", s)),
+            Literal::Array(elements) => {
+                let elements_str: Vec<String> = elements
+                    .iter()
+                    .map(|e| generate_expression(e))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(format!("({})", elements_str.join(" ")))
+            }
+            Literal::Map(pairs) => {
+                let pairs_str: Vec<String> = pairs
+                    .iter()
+                    .map(|(k, v)| {
+                        let k_str = generate_expression(k)?;
+                        let v_str = generate_expression(v)?;
+                        Ok(format!("{}={}", k_str, v_str))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(format!("({})", pairs_str.join(" ")))
+            }
         },
         Expression::Identifier(name) => Ok(format!("\"$__shard_{}\"", name)),
+        Expression::BinaryOp { op, left, right } => {
+            let left_str = generate_expression(left)?;
+            let right_str = generate_expression(right)?;
+            let shell_op = match op {
+                crate::ast::BinaryOperator::Add => "+",
+                crate::ast::BinaryOperator::Subtract => "-",
+                crate::ast::BinaryOperator::Multiply => "*",
+                crate::ast::BinaryOperator::Divide => "/",
+                crate::ast::BinaryOperator::Modulo => "%",
+                crate::ast::BinaryOperator::Equals => "-eq",
+                crate::ast::BinaryOperator::NotEquals => "!=",
+                crate::ast::BinaryOperator::Less => "-lt",
+                crate::ast::BinaryOperator::Greater => "-gt",
+                crate::ast::BinaryOperator::LessEquals => "-le",
+                crate::ast::BinaryOperator::GreaterEquals => "-ge",
+                crate::ast::BinaryOperator::And => "&&",
+                crate::ast::BinaryOperator::Or => "||",
+            };
+            Ok(format!("$(({} {} {}))", left_str, shell_op, right_str))
+        }
+        Expression::UnaryOp { op, expr } => {
+            let expr_str = generate_expression(expr)?;
+            match op {
+                crate::ast::UnaryOperator::Negate => Ok(format!("$((-{}))", expr_str)),
+                crate::ast::UnaryOperator::Not => Ok(format!("!{}", expr_str)),
+            }
+        }
+        Expression::ArrayIndex { array, index } => {
+            let arr_str = generate_expression(array)?;
+            let idx_str = generate_expression(index)?;
+            Ok(format!("${{{}{}}}", arr_str, idx_str))
+        }
+        Expression::MapIndex { map, key } => {
+            let map_str = generate_expression(map)?;
+            let key_str = generate_expression(key)?;
+            Ok(format!("${{{}{}}}", map_str, key_str))
+        }
+        Expression::FunctionCall { name, args } => {
+            let args_str: Vec<String> = args
+                .iter()
+                .map(|a| generate_expression(a))
+                .collect::<Result<Vec<_>, _>>()?;
+            match name.as_str() {
+                "len" if args.len() == 1 => Ok(format!("${{#{}}}", args_str[0])),
+                _ => Ok(format!("$({} {})", name, args_str.join(" "))),
+            }
+        }
+        Expression::InterpolatedString { parts } => {
+            let parts_str: Vec<String> = parts
+                .iter()
+                .map(|p| generate_expression(p))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(format!("\"{}\"", parts_str.join("")))
+        }
+        Expression::Range { start, end } => {
+            let start_str = generate_expression(start)?;
+            let end_str = generate_expression(end)?;
+            Ok(format!("$(({}-{}))", start_str, end_str))
+        }
+        Expression::Length { expr } => {
+            let expr_str = generate_expression(expr)?;
+            Ok(format!("${{#{}}}", expr_str))
+        }
     }
 }
 
 fn generate_command(output: &mut String, name: &str, args: &[Expression]) -> CodegenResult<()> {
     let args_str: Vec<String> = args
         .iter()
-        .map(generate_expression)
+        .map(|arg| generate_expression(arg))
         .collect::<Result<Vec<_>, _>>()?;
 
     output.push_str("__shard_stdout_tmp=$(mktemp)\n");
     output.push_str("__shard_stderr_tmp=$(mktemp)\n");
 
     let cmd_line = if args_str.is_empty() {
-        name.to_string()
+        format!("{}", name)
     } else {
         format!("{} {}", name, args_str.join(" "))
     };
@@ -90,5 +175,23 @@ mod tests {
         let result = generate(&ast).unwrap();
         assert!(result.contains("__shard_stdout_tmp=$(mktemp)"));
         assert!(result.contains("__shard_status=$?"));
+    }
+
+    #[test]
+    fn test_generate_multiple_assignments() {
+        let tokens = tokenize("x = 1\ny = 2\nz = 3").unwrap();
+        let ast = parse(tokens).unwrap();
+        let result = generate(&ast).unwrap();
+        assert!(result.contains("__shard_x=1"));
+        assert!(result.contains("__shard_y=2"));
+        assert!(result.contains("__shard_z=3"));
+    }
+
+    #[test]
+    fn test_generate_empty_program() {
+        let tokens = tokenize("").unwrap();
+        let ast = parse(tokens).unwrap();
+        let result = generate(&ast).unwrap();
+        assert!(result.contains("#!/bin/sh"));
     }
 }

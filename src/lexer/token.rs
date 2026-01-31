@@ -2,16 +2,41 @@ use crate::lexer::error::LexerError;
 use crate::lexer::error::LexerResult;
 use std::str::Chars;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TokenType {
     Identifier,
     Integer,
     Boolean,
     Null,
     String,
+    InterpolatedString,
     Equals,
+    Plus,
+    Minus,
+    Star,
+    Slash,
+    Percent,
+    EqEq,
+    NotEq,
+    Less,
+    Greater,
+    LessEq,
+    GreaterEq,
+    And,
+    Or,
+    Not,
+    LParen,
+    RParen,
+    LBracket,
+    RBracket,
+    LBrace,
+    RBrace,
+    Comma,
+    Colon,
+    Arrow,
     Newline,
     Whitespace,
+    Comment,
     EOF,
 }
 
@@ -69,10 +94,31 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    fn skip_comment(&mut self) {
+        while let Some(c) = self.current_char {
+            if c == '\n' {
+                break;
+            }
+            self.advance();
+        }
+    }
+
     fn read_identifier(&mut self) -> String {
         let start = self.pos;
         while let Some(c) = self.current_char {
             if c.is_alphanumeric() || c == '_' || c == '-' || c == '/' || c == '.' {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        self.input[start..self.pos].to_string()
+    }
+
+    fn read_number(&mut self) -> String {
+        let start = self.pos;
+        while let Some(c) = self.current_char {
+            if c.is_ascii_digit() {
                 self.advance();
             } else {
                 break;
@@ -86,6 +132,7 @@ impl<'a> Lexer<'a> {
         self.advance();
 
         let mut value = String::new();
+
         while let Some(c) = self.current_char {
             if c == '\'' {
                 self.advance();
@@ -107,16 +154,29 @@ impl<'a> Lexer<'a> {
         })
     }
 
-    fn read_number(&mut self) -> String {
-        let start = self.pos;
+    fn read_double_string(&mut self) -> String {
+        self.advance();
+
+        let mut value = String::new();
+
         while let Some(c) = self.current_char {
-            if c.is_ascii_digit() {
+            if c == '"' {
                 self.advance();
-            } else {
                 break;
+            } else if c == '\\' {
+                self.advance();
+                if let Some(escaped) = self.current_char {
+                    value.push(escaped);
+                    self.advance();
+                }
+            } else if c == '\n' {
+                break;
+            } else {
+                value.push(c);
+                self.advance();
             }
         }
-        self.input[start..self.pos].to_string()
+        value
     }
 }
 
@@ -126,14 +186,29 @@ impl<'a> Iterator for Lexer<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         self.skip_whitespace();
 
-        self.current_char?;
+        if self.current_char.is_none() {
+            return None;
+        }
 
         let start = self.pos;
 
         let token = match self.current_char {
+            Some('#') => {
+                self.skip_comment();
+                Token::new(TokenType::Comment, start, self.pos, None)
+            }
             Some('\n') => {
                 self.advance();
                 Token::new(TokenType::Newline, start, self.pos, None)
+            }
+            Some('"') => {
+                let content = self.read_double_string();
+                Token::new(
+                    TokenType::InterpolatedString,
+                    start,
+                    self.pos,
+                    Some(content),
+                )
             }
             Some(c) if c.is_alphabetic() || c == '_' || c == '-' || c == '/' => {
                 let value = self.read_identifier();
@@ -141,6 +216,18 @@ impl<'a> Iterator for Lexer<'a> {
                     "true" => Token::new(TokenType::Boolean, start, self.pos, Some(value)),
                     "false" => Token::new(TokenType::Boolean, start, self.pos, Some(value)),
                     "null" => Token::new(TokenType::Null, start, self.pos, Some(value)),
+                    "if" => Token::new(TokenType::Identifier, start, self.pos, Some(value)),
+                    "else" => Token::new(TokenType::Identifier, start, self.pos, Some(value)),
+                    "while" => Token::new(TokenType::Identifier, start, self.pos, Some(value)),
+                    "for" => Token::new(TokenType::Identifier, start, self.pos, Some(value)),
+                    "in" => Token::new(TokenType::Identifier, start, self.pos, Some(value)),
+                    "fn" => Token::new(TokenType::Identifier, start, self.pos, Some(value)),
+                    "return" => Token::new(TokenType::Identifier, start, self.pos, Some(value)),
+                    "try" => Token::new(TokenType::Identifier, start, self.pos, Some(value)),
+                    "catch" => Token::new(TokenType::Identifier, start, self.pos, Some(value)),
+                    "and" => Token::new(TokenType::And, start, self.pos, Some(value)),
+                    "or" => Token::new(TokenType::Or, start, self.pos, Some(value)),
+                    "not" => Token::new(TokenType::Not, start, self.pos, Some(value)),
                     _ => Token::new(TokenType::Identifier, start, self.pos, Some(value)),
                 }
             }
@@ -154,7 +241,96 @@ impl<'a> Iterator for Lexer<'a> {
             },
             Some('=') => {
                 self.advance();
-                Token::new(TokenType::Equals, start, self.pos, None)
+                if self.current_char == Some('=') {
+                    self.advance();
+                    Token::new(TokenType::EqEq, start, self.pos, None)
+                } else {
+                    Token::new(TokenType::Equals, start, self.pos, None)
+                }
+            }
+            Some('!') => {
+                self.advance();
+                if self.current_char == Some('=') {
+                    self.advance();
+                    Token::new(TokenType::NotEq, start, self.pos, None)
+                } else {
+                    Token::new(TokenType::Not, start, self.pos, None)
+                }
+            }
+            Some('<') => {
+                self.advance();
+                if self.current_char == Some('=') {
+                    self.advance();
+                    Token::new(TokenType::LessEq, start, self.pos, None)
+                } else {
+                    Token::new(TokenType::Less, start, self.pos, None)
+                }
+            }
+            Some('>') => {
+                self.advance();
+                if self.current_char == Some('=') {
+                    self.advance();
+                    Token::new(TokenType::GreaterEq, start, self.pos, None)
+                } else {
+                    Token::new(TokenType::Greater, start, self.pos, None)
+                }
+            }
+            Some('+') => {
+                self.advance();
+                Token::new(TokenType::Plus, start, self.pos, None)
+            }
+            Some('-') => {
+                self.advance();
+                if self.current_char == Some('>') {
+                    self.advance();
+                    Token::new(TokenType::Arrow, start, self.pos, None)
+                } else {
+                    Token::new(TokenType::Minus, start, self.pos, None)
+                }
+            }
+            Some('*') => {
+                self.advance();
+                Token::new(TokenType::Star, start, self.pos, None)
+            }
+            Some('/') => {
+                self.advance();
+                Token::new(TokenType::Slash, start, self.pos, None)
+            }
+            Some('%') => {
+                self.advance();
+                Token::new(TokenType::Percent, start, self.pos, None)
+            }
+            Some('(') => {
+                self.advance();
+                Token::new(TokenType::LParen, start, self.pos, None)
+            }
+            Some(')') => {
+                self.advance();
+                Token::new(TokenType::RParen, start, self.pos, None)
+            }
+            Some('[') => {
+                self.advance();
+                Token::new(TokenType::LBracket, start, self.pos, None)
+            }
+            Some(']') => {
+                self.advance();
+                Token::new(TokenType::RBracket, start, self.pos, None)
+            }
+            Some('{') => {
+                self.advance();
+                Token::new(TokenType::LBrace, start, self.pos, None)
+            }
+            Some('}') => {
+                self.advance();
+                Token::new(TokenType::RBrace, start, self.pos, None)
+            }
+            Some(',') => {
+                self.advance();
+                Token::new(TokenType::Comma, start, self.pos, None)
+            }
+            Some(':') => {
+                self.advance();
+                Token::new(TokenType::Colon, start, self.pos, None)
             }
             Some(c) => {
                 self.advance();
