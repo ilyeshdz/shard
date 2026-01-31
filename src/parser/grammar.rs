@@ -26,6 +26,10 @@ fn parse_statement(tokens: &[SpannedToken], pos: &mut usize) -> ParserResult<Opt
     let (start, token, _) = &tokens[*pos];
 
     match token.token_type {
+        TokenType::Newline => {
+            *pos += 1;
+            parse_statement(tokens, pos)
+        }
         TokenType::Identifier => {
             let name = token.value.clone().unwrap_or_default();
             *pos += 1;
@@ -42,7 +46,9 @@ fn parse_statement(tokens: &[SpannedToken], pos: &mut usize) -> ParserResult<Opt
             let mut args = Vec::new();
             while *pos < tokens.len() {
                 let (_, next_token, _) = &tokens[*pos];
-                if next_token.token_type == TokenType::EOF {
+                if next_token.token_type == TokenType::Newline
+                    || next_token.token_type == TokenType::EOF
+                {
                     break;
                 }
                 args.push(parse_expression(tokens, pos)?);
@@ -105,5 +111,14 @@ mod tests {
         let tokens = tokenize("echo hello").unwrap();
         let result = parse(tokens);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_multiple_statements() {
+        let tokens = tokenize("x = 1\ny = 2\necho x").unwrap();
+        let result = parse(tokens);
+        assert!(result.is_ok());
+        let ast = result.unwrap();
+        assert_eq!(ast.0.len(), 3);
     }
 }

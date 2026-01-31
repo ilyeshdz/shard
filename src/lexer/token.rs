@@ -10,6 +10,7 @@ pub enum TokenType {
     Null,
     String,
     Equals,
+    Newline,
     Whitespace,
     EOF,
 }
@@ -60,7 +61,7 @@ impl<'a> Lexer<'a> {
 
     fn skip_whitespace(&mut self) {
         while let Some(c) = self.current_char {
-            if c.is_whitespace() {
+            if c.is_whitespace() && c != '\n' {
                 self.advance();
             } else {
                 break;
@@ -71,7 +72,7 @@ impl<'a> Lexer<'a> {
     fn read_identifier(&mut self) -> String {
         let start = self.pos;
         while let Some(c) = self.current_char {
-            if c.is_alphanumeric() || c == '_' {
+            if c.is_alphanumeric() || c == '_' || c == '-' || c == '/' || c == '.' {
                 self.advance();
             } else {
                 break;
@@ -130,7 +131,11 @@ impl<'a> Iterator for Lexer<'a> {
         let start = self.pos;
 
         let token = match self.current_char {
-            Some(c) if c.is_alphabetic() || c == '_' => {
+            Some('\n') => {
+                self.advance();
+                Token::new(TokenType::Newline, start, self.pos, None)
+            }
+            Some(c) if c.is_alphabetic() || c == '_' || c == '-' || c == '/' => {
                 let value = self.read_identifier();
                 match value.as_str() {
                     "true" => Token::new(TokenType::Boolean, start, self.pos, Some(value)),
