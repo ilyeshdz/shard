@@ -1,6 +1,5 @@
 ---
 source: tests/snapshot_tests.rs
-assertion_line: 49
 expression: output
 ---
 #!/bin/sh
@@ -8,7 +7,7 @@ expression: output
 
 __shard_stdout_tmp=$(mktemp)
 __shard_stderr_tmp=$(mktemp)
-ls "$__shard_-la" "$__shard_/home" > "$__shard_stdout_tmp" 2> "$__shard_stderr_tmp"
+ls '-la' '/home' > "$__shard_stdout_tmp" 2> "$__shard_stderr_tmp"
 __shard_status=$?
 __shard_stdout=$(cat < "$__shard_stdout_tmp")
 __shard_stderr=$(cat < "$__shard_stderr_tmp")

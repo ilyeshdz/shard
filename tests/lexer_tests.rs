@@ -160,8 +160,10 @@ fn test_tokenize_reserved_words_as_identifiers() {
 fn test_tokenize_command_with_arguments() {
     let tokens = tokenize("ls -la /home").unwrap();
     assert_eq!(tokens[0].1.value, Some("ls".to_string()));
-    assert_eq!(tokens[1].1.value, Some("-la".to_string()));
-    assert_eq!(tokens[2].1.value, Some("/home".to_string()));
+    assert_eq!(tokens[1].1.token_type, TokenType::Minus);
+    assert_eq!(tokens[2].1.value, Some("la".to_string()));
+    assert_eq!(tokens[3].1.token_type, TokenType::Slash);
+    assert_eq!(tokens[4].1.value, Some("home".to_string()));
 }
 
 #[test]
