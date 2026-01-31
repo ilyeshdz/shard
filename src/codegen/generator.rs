@@ -25,8 +25,120 @@ fn generate_statement(output: &mut String, statement: &Statement) -> CodegenResu
         Statement::Command { name, args } => {
             generate_command(output, name, args)?;
         }
-        _ => {
-            output.push_str("# TODO: Implement statement\n");
+        Statement::If {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            let cond_str = generate_expression(condition)?;
+            // If condition is already a test expression [ ... ], use it directly
+            // Otherwise wrap it in [ ]
+            if cond_str.starts_with('[') && cond_str.ends_with(']') {
+                output.push_str(&format!("if {}; then\n", cond_str));
+            } else {
+                output.push_str(&format!("if [ {} ]; then\n", cond_str));
+            }
+            for stmt in then_branch {
+                generate_statement(output, stmt)?;
+                output.push('\n');
+            }
+            if let Some(else_body) = else_branch {
+                output.push_str("else\n");
+                for stmt in else_body {
+                    generate_statement(output, stmt)?;
+                    output.push('\n');
+                }
+            }
+            output.push_str("fi\n");
+        }
+        Statement::While { condition, body } => {
+            let cond_str = generate_expression(condition)?;
+            // If condition is already a test expression [ ... ], use it directly
+            if cond_str.starts_with('[') && cond_str.ends_with(']') {
+                output.push_str(&format!("while {}; do\n", cond_str));
+            } else {
+                output.push_str(&format!("while [ {} ]; do\n", cond_str));
+            }
+            for stmt in body {
+                generate_statement(output, stmt)?;
+                output.push('\n');
+            }
+            output.push_str("done\n");
+        }
+        Statement::For {
+            variable,
+            iterable,
+            body,
+        } => {
+            // Check if iterable is an array literal
+            let iter_str = match iterable {
+                Expression::Literal(Literal::Array(elements)) => {
+                    let elems: Result<Vec<String>, _> =
+                        elements.iter().map(|e| generate_expression(e)).collect();
+                    elems?.join(" ")
+                }
+                _ => {
+                    let iter = generate_expression(iterable)?;
+                    // Remove parentheses if present
+                    iter.trim_start_matches('(')
+                        .trim_end_matches(')')
+                        .to_string()
+                }
+            };
+            output.push_str(&format!("for __shard_{} in {}; do\n", variable, iter_str));
+            for stmt in body {
+                generate_statement(output, stmt)?;
+                output.push('\n');
+            }
+            output.push_str("done\n");
+        }
+        Statement::FunctionDef {
+            name,
+            params,
+            body,
+            return_value: _,
+        } => {
+            output.push_str(&format!("{}() {{\n", name));
+            for stmt in body {
+                generate_statement(output, stmt)?;
+                output.push('\n');
+            }
+            output.push_str("}\n");
+        }
+        Statement::Return { value } => {
+            if let Some(expr) = value {
+                let val_str = generate_expression(expr)?;
+                output.push_str(&format!("return {}\n", val_str));
+            } else {
+                output.push_str("return\n");
+            }
+        }
+        Statement::Try {
+            body,
+            catch_var: _,
+            catch_body,
+        } => {
+            output.push_str("if true; then\n");
+            for stmt in body {
+                generate_statement(output, stmt)?;
+                output.push('\n');
+            }
+            output.push_str("else\n");
+            for stmt in catch_body {
+                generate_statement(output, stmt)?;
+                output.push('\n');
+            }
+            output.push_str("fi\n");
+        }
+        Statement::Break => {
+            output.push_str("break\n");
+        }
+        Statement::Continue => {
+            output.push_str("continue\n");
+        }
+        Statement::ExpressionStatement(expr) => {
+            let expr_str = generate_expression(expr)?;
+            output.push_str(&format!("{}\n", expr_str));
         }
     }
     Ok(())
@@ -64,22 +176,48 @@ fn generate_expression(expr: &Expression) -> CodegenResult<String> {
         Expression::BinaryOp { op, left, right } => {
             let left_str = generate_expression(left)?;
             let right_str = generate_expression(right)?;
-            let shell_op = match op {
-                crate::ast::BinaryOperator::Add => "+",
-                crate::ast::BinaryOperator::Subtract => "-",
-                crate::ast::BinaryOperator::Multiply => "*",
-                crate::ast::BinaryOperator::Divide => "/",
-                crate::ast::BinaryOperator::Modulo => "%",
-                crate::ast::BinaryOperator::Equals => "-eq",
-                crate::ast::BinaryOperator::NotEquals => "!=",
-                crate::ast::BinaryOperator::Less => "-lt",
-                crate::ast::BinaryOperator::Greater => "-gt",
-                crate::ast::BinaryOperator::LessEquals => "-le",
-                crate::ast::BinaryOperator::GreaterEquals => "-ge",
-                crate::ast::BinaryOperator::And => "&&",
-                crate::ast::BinaryOperator::Or => "||",
-            };
-            Ok(format!("$(({} {} {}))", left_str, shell_op, right_str))
+
+            // For comparison operators used in conditions, use test syntax
+            let is_comparison = matches!(
+                op,
+                crate::ast::BinaryOperator::Equals
+                    | crate::ast::BinaryOperator::NotEquals
+                    | crate::ast::BinaryOperator::Less
+                    | crate::ast::BinaryOperator::Greater
+                    | crate::ast::BinaryOperator::LessEquals
+                    | crate::ast::BinaryOperator::GreaterEquals
+            );
+
+            if is_comparison {
+                let shell_op = match op {
+                    crate::ast::BinaryOperator::Equals => "-eq",
+                    crate::ast::BinaryOperator::NotEquals => "-ne",
+                    crate::ast::BinaryOperator::Less => "-lt",
+                    crate::ast::BinaryOperator::Greater => "-gt",
+                    crate::ast::BinaryOperator::LessEquals => "-le",
+                    crate::ast::BinaryOperator::GreaterEquals => "-ge",
+                    _ => unreachable!(),
+                };
+                // Remove quotes from identifiers for test command
+                let left_clean = left_str.trim_matches('"').to_string();
+                let right_clean = right_str.trim_matches('"').to_string();
+                Ok(format!("[ {} {} {} ]", left_clean, shell_op, right_clean))
+            } else {
+                let shell_op = match op {
+                    crate::ast::BinaryOperator::Add => "+",
+                    crate::ast::BinaryOperator::Subtract => "-",
+                    crate::ast::BinaryOperator::Multiply => "*",
+                    crate::ast::BinaryOperator::Divide => "/",
+                    crate::ast::BinaryOperator::Modulo => "%",
+                    crate::ast::BinaryOperator::And => "&&",
+                    crate::ast::BinaryOperator::Or => "||",
+                    _ => unreachable!(),
+                };
+                // For arithmetic, strip quotes from variable references
+                let left_clean = left_str.trim_matches('"').to_string();
+                let right_clean = right_str.trim_matches('"').to_string();
+                Ok(format!("$(({} {} {}))", left_clean, shell_op, right_clean))
+            }
         }
         Expression::UnaryOp { op, expr } => {
             let expr_str = generate_expression(expr)?;
