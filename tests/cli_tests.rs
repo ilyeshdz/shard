@@ -142,7 +142,7 @@ fn test_cli_check_verbose() {
     let input_file = temp.child("test.shard");
     input_file.write_str("name = 'Shard'").unwrap();
 
-    let (success, stdout, stderr) =
+    let (success, _stdout, stderr) =
         run_shard(&["-v", "check", "-i", input_file.path().to_str().unwrap()]);
     assert!(success);
     assert!(stderr.contains("Tokenized"));
@@ -157,7 +157,7 @@ fn test_cli_build_verbose() {
 
     let output_file = temp.child("output.sh");
 
-    let (success, stdout, stderr) = run_shard(&[
+    let (success, _stdout, stderr) = run_shard(&[
         "-v",
         "build",
         "-i",

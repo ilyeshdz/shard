@@ -71,7 +71,7 @@ struct Args {
 }
 
 fn handle_check(args: &Commands, verbose: bool) -> Result<(), ShardError> {
-    if let Commands::Check { input, format: _ } = args {
+    if let Commands::Check { input, format } = args {
         let input = std::fs::read_to_string(input)?;
 
         if verbose {
@@ -88,13 +88,23 @@ fn handle_check(args: &Commands, verbose: bool) -> Result<(), ShardError> {
             eprintln!("Parsed {} statements", ast.0.len());
         }
 
-        let shell = generate(&ast)?;
+        let format = format.unwrap_or(OutputFormat::Shell);
 
-        println!(
-            "✓ Check passed - {} statements, {} chars",
-            ast.0.len(),
-            shell.len()
-        );
+        match format {
+            OutputFormat::Shell => {
+                let shell = generate(&ast)?;
+                println!(
+                    "✓ Check passed - {} statements, {} chars",
+                    ast.0.len(),
+                    shell.len()
+                );
+            }
+            OutputFormat::Json => {
+                let json = serde_json::to_string_pretty(&ast)?;
+                println!("{}", json);
+            }
+        }
+
         Ok(())
     } else {
         unreachable!()
@@ -140,7 +150,7 @@ fn handle_build(args: &Commands, verbose: bool) -> Result<(), ShardError> {
 }
 
 fn handle_transpile(args: &Commands, verbose: bool) -> Result<(), ShardError> {
-    if let Commands::Transpile { input, format: _ } = args {
+    if let Commands::Transpile { input, format } = args {
         let input_str = if let Some(path) = input {
             std::fs::read_to_string(path)?
         } else {
@@ -153,9 +163,19 @@ fn handle_transpile(args: &Commands, verbose: bool) -> Result<(), ShardError> {
 
         let tokens = tokenize(&input_str)?;
         let ast = parse(tokens)?;
-        let shell = generate(&ast)?;
+        let format = format.unwrap_or(OutputFormat::Shell);
 
-        print!("{}", shell);
+        match format {
+            OutputFormat::Shell => {
+                let shell = generate(&ast)?;
+                print!("{}", shell);
+            }
+            OutputFormat::Json => {
+                let json = serde_json::to_string_pretty(&ast)?;
+                println!("{}", json);
+            }
+        }
+
         Ok(())
     } else {
         unreachable!()

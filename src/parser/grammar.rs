@@ -969,11 +969,11 @@ fn parse_function_args(tokens: &[SpannedToken], pos: &mut usize) -> ParserResult
 }
 
 fn parse_interpolated_string(
-    tokens: &[SpannedToken],
-    pos: &mut usize,
-    _content: String,
+    _tokens: &[SpannedToken],
+    _pos: &mut usize,
+    content: String,
 ) -> ParserResult<Expression> {
-    Ok(Expression::Literal(Literal::String(_content)))
+    Ok(Expression::Literal(Literal::String(content)))
 }
 
 #[cfg(test)]

@@ -1,4 +1,7 @@
-#[derive(Debug, Clone, PartialEq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Literal {
     Integer(i64),
     Float(f64),
@@ -9,7 +12,8 @@ pub enum Literal {
     Map(Vec<(Expression, Expression)>),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Expression {
     Literal(Literal),
     Identifier(String),
@@ -46,7 +50,8 @@ pub enum Expression {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum BinaryOperator {
     Add,
     Subtract,
@@ -63,13 +68,15 @@ pub enum BinaryOperator {
     Or,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum UnaryOperator {
     Negate,
     Not,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum Statement {
     Assignment {
         name: String,
@@ -112,5 +119,5 @@ pub enum Statement {
     ExpressionStatement(Expression),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Program(pub Vec<Statement>);

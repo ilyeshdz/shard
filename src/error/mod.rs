@@ -15,6 +15,15 @@ pub enum ShardError {
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error("Serialization error: {0}")]
+    SerdeJson(String),
+}
+
+impl From<serde_json::Error> for ShardError {
+    fn from(e: serde_json::Error) -> Self {
+        ShardError::SerdeJson(format!("{:?}", e))
+    }
 }
 
 impl From<crate::lexer::error::LexerError> for ShardError {

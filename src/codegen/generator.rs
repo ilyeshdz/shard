@@ -96,12 +96,20 @@ fn generate_statement(output: &mut String, statement: &Statement) -> CodegenResu
             name,
             params,
             body,
-            return_value: _,
+            return_value,
         } => {
             output.push_str(&format!("{}() {{\n", name));
+            // Declare parameters as local variables
+            for (i, param) in params.iter().enumerate() {
+                output.push_str(&format!("  local __shard_{}=${}\n", param, i + 1));
+            }
             for stmt in body {
                 generate_statement(output, stmt)?;
                 output.push('\n');
+            }
+            if let Some(expr) = return_value {
+                let val_str = generate_expression(expr)?;
+                output.push_str(&format!("  echo {}\n", val_str));
             }
             output.push_str("}\n");
         }
@@ -115,15 +123,21 @@ fn generate_statement(output: &mut String, statement: &Statement) -> CodegenResu
         }
         Statement::Try {
             body,
-            catch_var: _,
+            catch_var,
             catch_body,
         } => {
-            output.push_str("if true; then\n");
+            let mut try_block = String::new();
             for stmt in body {
-                generate_statement(output, stmt)?;
-                output.push('\n');
+                generate_statement(&mut try_block, stmt)?;
+                try_block.push('\n');
             }
+            output.push_str(&format!(
+                "if __shard_error=$({{ {} }} 2>&1); then\n",
+                try_block.replace('\n', "; ").trim_end_matches("; ")
+            ));
+            output.push_str(&format!("  __shard_{}=''\n", catch_var));
             output.push_str("else\n");
+            output.push_str(&format!("  __shard_{}=$?\n", catch_var));
             for stmt in catch_body {
                 generate_statement(output, stmt)?;
                 output.push('\n');
